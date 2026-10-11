@@ -15,3 +15,8 @@ export async function disconnectDatabase(): Promise<void> {
 export function isDatabaseConnected(): boolean {
   return mongoose.connection.readyState === 1;
 }
+
+/** The URI without its credentials, safe to log: mongodb+srv://***@cluster0.example.net/db */
+export function redactMongoUri(uri: string): string {
+  return uri.replace(/\/\/[^@/]*@/, '//***@');
+}

@@ -1,7 +1,7 @@
 import { RuleBasedTailorAdapter } from './adapters/ai/rule-based.adapter';
 import { buildApp } from './app';
 import { createClaimsVerifier } from './auth/supabase';
-import { connectDatabase, disconnectDatabase, isDatabaseConnected } from './config/database';
+import { connectDatabase, disconnectDatabase, isDatabaseConnected, redactMongoUri } from './config/database';
 import { loadConfig } from './config/env';
 import { CandidateProfileClient } from './grpc/candidate-profile.client';
 import { JobPostingClient } from './grpc/job-posting.client';
@@ -19,7 +19,7 @@ async function main(): Promise<void> {
     await connectDatabase(config.mongodbUri);
   } catch (err) {
     // Keep running so /health can report it; draft operations fail with 500 until Mongo is back.
-    logger.error(`Could not connect to MongoDB at ${config.mongodbUri}:`, (err as Error).message);
+    logger.error(`Could not connect to MongoDB at ${redactMongoUri(config.mongodbUri)}:`, (err as Error).message);
   }
 
   const resumeService = new ResumeService({

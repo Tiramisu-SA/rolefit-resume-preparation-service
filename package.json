@@ -12,7 +12,7 @@
     "test": "tsx --test tests/*.test.ts"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "dependencies": {
     "@grpc/grpc-js": "^1.14.6",

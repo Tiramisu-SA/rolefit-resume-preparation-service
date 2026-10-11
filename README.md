@@ -17,6 +17,9 @@ cp .env.example .env   # fill SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY (rolefit-a
 npm run dev            # REST + gRPC with auto-reload
 ```
 
+Needs **Node.js 22+** (`nvm use` reads `.nvmrc`; on Node 20 `@supabase/supabase-js` fails at startup with
+"Node.js 20 detected without native WebSocket support").
+
 Needs MongoDB (e.g. `docker run -d --name rolefit-mongo -p 27017:27017 mongo:7`) and, for generating drafts,
 the Candidate Profile (`:50051`) and Job Posting (`:50052`) services. Without MongoDB the service still starts and
 `/health` reports `db: disconnected`.
