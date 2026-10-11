@@ -60,7 +60,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
 
   const config: AppConfig = {
     nodeEnv,
-    port: toInt(env.PORT, 3004, 'PORT', errors),
+    port: toInt(env.PORT, 3006, 'PORT', errors),
     grpcHost: env.GRPC_HOST?.trim() || '0.0.0.0',
     grpcPort: toInt(env.GRPC_PORT, 50053, 'GRPC_PORT', errors),
     corsOrigin: env.CORS_ORIGIN?.trim() || 'http://localhost:3000',

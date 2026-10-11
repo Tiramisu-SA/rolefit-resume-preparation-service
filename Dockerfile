@@ -14,5 +14,5 @@ COPY package*.json ./
 RUN npm ci --omit=dev
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/proto ./proto
-EXPOSE 3004 50053
+EXPOSE 3006 50053
 CMD ["node", "dist/server.js"]

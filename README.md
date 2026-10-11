@@ -4,7 +4,7 @@ Builds a resume tailored to one job, using **only** the candidate's verified pro
 previews it, edits it, picks a format and approves it; the Application Service then reads the approved
 resume when the seeker applies.
 
-- **REST/JSON** (`:3004`) for the web app, through the API Gateway (`/api/resumes/*` → this service's `/api/*`).
+- **REST/JSON** (`:3006`) for the web app, through the API Gateway (`/api/resumes/*` → this service's `/api/*`).
 - **gRPC** (`:50053`) `GetApprovedResume` for the Application Service.
 - Owns the **Resume Draft Store** (MongoDB, database `rolefit_resume_preparation`). No other service may read it.
 - Reads the profile from the Candidate Profile Service and the job from the Job Posting Service over gRPC.

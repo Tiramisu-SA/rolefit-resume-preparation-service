@@ -3,7 +3,7 @@
 ## Integration (other repos)
 
 - **API Gateway** (`rolefit-api-gateway`): proxy `/api/resumes/*` to this service
-  (`RESUME_PREPARATION_SERVICE_URL=http://localhost:3004`).
+  (`RESUME_PREPARATION_SERVICE_URL=http://localhost:3006`).
 - **Web app** (`rolefit-frontend`): replace the browser mock in `src/lib/api/resume-preparation.ts` with gateway calls.
 - **Application Service**: copy `proto/resume-preparation.proto` and call `GetApprovedResume` (`localhost:50053`) in
   `submitApplication()` to snapshot the approved resume.
