@@ -1,0 +1,32 @@
+{
+  "name": "rolefit-resume-preparation-service",
+  "version": "0.1.0",
+  "private": true,
+  "description": "RoleFit Resume Preparation Service: job-tailored resume drafts built only from the candidate's verified profile",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "dev": "tsx watch src/server.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test tests/*.test.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "^1.14.6",
+    "@grpc/proto-loader": "^0.8.1",
+    "@supabase/supabase-js": "^2.109.0",
+    "dotenv": "^18.0.7",
+    "express": "^5.3.0",
+    "mongoose": "^8.24.5",
+    "ulid": "^3.0.2"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^20.19.43",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  }
+}
