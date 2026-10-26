@@ -1,0 +1,450 @@
+openapi: 3.0.3
+info:
+  title: RoleFit Resume Preparation Service
+  version: 1.0.0
+  description: |
+    Builds a resume tailored to one job from the seeker's own verified profile (ADR-004). The seeker previews it,
+    edits it, picks a format and approves it. The Application Service reads the approved resume over gRPC
+    (`proto/resume-preparation.proto`), which is not part of this document.
+
+    Every route works on the caller's own draft for one job. There is one draft per (seeker, job).
+
+    The web app calls this service through the API Gateway: `/api/resumes/*` on the gateway becomes `/api/*` here.
+    Pick the matching server below; the paths are the same.
+servers:
+  - url: http://localhost:8080/api/resumes
+    description: Through the API Gateway (what the web app uses)
+  - url: http://localhost:3006/api
+    description: Service directly (internal, local testing)
+security:
+  - bearerAuth: []
+  - mockUserId: []
+tags:
+  - name: Drafts
+    description: The seeker's tailored resume draft for one job
+  - name: Health
+    description: Liveness and database state
+
+paths:
+  /health:
+    servers:
+      - url: http://localhost:3006
+        description: Service directly (not routed by the gateway)
+    get:
+      tags: [Health]
+      summary: Health and Resume Draft Store state
+      operationId: getHealth
+      security: []
+      responses:
+        '200':
+          description: MongoDB is connected
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Health' }
+              example: { status: ok, service: resume-preparation-service, db: connected }
+        '503':
+          description: MongoDB is not connected; the service is running but cannot read or save drafts
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Health' }
+              example: { status: degraded, service: resume-preparation-service, db: disconnected }
+
+  /drafts/{jobId}/generate:
+    parameters:
+      - $ref: '#/components/parameters/JobId'
+    post:
+      tags: [Drafts]
+      summary: Generate (or regenerate) the tailored resume draft for a job
+      operationId: generateTailoredResume
+      description: |
+        Reads the seeker's profile (Candidate Profile gRPC) and the job (Job Posting gRPC), tailors the content with
+        the AI Model Adapter, checks that every section is grounded in the profile, and saves the draft unapproved.
+
+        Generating again rebuilds the draft from the current profile: it keeps the draft id and drops edits and
+        approval. The format starts as `company` when the job has a company resume template, otherwise `personal`.
+        No request body.
+      responses:
+        '201':
+          description: The new or regenerated draft
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResumeDraft' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: '`JOB_NOT_FOUND`'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example: { error: { code: JOB_NOT_FOUND, message: Job not found } }
+        '409':
+          description: '`PROFILE_REQUIRED` (the seeker has no profile yet) or `JOB_NOT_OPEN`'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example: { error: { code: PROFILE_REQUIRED, message: Create your profile before tailoring a resume. } }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '502':
+          description: |
+            `UNGROUNDED_RESUME` (the adapter produced content that is not in the profile; nothing is saved) or
+            `UPSTREAM_ERROR` (Candidate Profile or Job Posting returned an unexpected error)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+  /drafts/{jobId}:
+    parameters:
+      - $ref: '#/components/parameters/JobId'
+    get:
+      tags: [Drafts]
+      summary: Get the seeker's draft for a job
+      operationId: getResumeDraft
+      responses:
+        '200':
+          description: The draft
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResumeDraft' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/DraftNotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /drafts/{jobId}/sections:
+    parameters:
+      - $ref: '#/components/parameters/JobId'
+    put:
+      tags: [Drafts]
+      summary: Edit the draft (include or hide sections, rewrite bullet text)
+      operationId: editResumeDraft
+      description: |
+        Send back the whole `sections` list. Only each section's `included` and each bullet's `text` can change.
+        The list must contain exactly the draft's section ids, and each section exactly its bullet ids; sections
+        and bullets cannot be added, removed or renamed. Other fields (title, meta, kind) are ignored, so the web
+        app can send the sections it holds unchanged.
+
+        A bullet whose text changed gets `tailored: false`. Any edit clears approval.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EditSectionsRequest' }
+            example:
+              sections:
+                - id: summary
+                  included: true
+                  bullets: [{ id: summary-b0, text: Frontend developer focused on React and TypeScript }]
+                - id: experience-0
+                  included: true
+                  bullets: [{ id: experience-0-b0, text: Built React dashboards used by 2000 merchants }]
+                - id: project-0
+                  included: false
+                  bullets: [{ id: project-0-b0, text: Built a campus event app }]
+      responses:
+        '200':
+          description: The edited draft (unapproved)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResumeDraft' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/DraftNotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /drafts/{jobId}/format:
+    parameters:
+      - $ref: '#/components/parameters/JobId'
+    put:
+      tags: [Drafts]
+      summary: Choose the resume format
+      operationId: selectResumeFormat
+      description: |
+        `company` (the job's company resume template) is allowed only when the job has one. Changing the format
+        clears approval; choosing the current format changes nothing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SelectFormatRequest' }
+            example: { format: personal }
+      responses:
+        '200':
+          description: The draft with the chosen format
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResumeDraft' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: '`RESUME_DRAFT_NOT_FOUND`, or `JOB_NOT_FOUND` when choosing `company`'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: '`NO_COMPANY_TEMPLATE`'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example: { error: { code: NO_COMPANY_TEMPLATE, message: This job has no company resume template. Use your default format. } }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '502': { $ref: '#/components/responses/UpstreamError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+  /drafts/{jobId}/approve:
+    parameters:
+      - $ref: '#/components/parameters/JobId'
+    post:
+      tags: [Drafts]
+      summary: Approve the draft so it can be used to apply
+      operationId: approveResume
+      description: At least one section must be included. Approving an approved draft changes nothing. No request body.
+      responses:
+        '200':
+          description: The approved draft
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResumeDraft' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/DraftNotFound' }
+        '409':
+          description: '`RESUME_EMPTY` (no section is included)'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /drafts/{jobId}/approved:
+    parameters:
+      - $ref: '#/components/parameters/JobId'
+    get:
+      tags: [Drafts]
+      summary: Get the approved draft
+      operationId: getApprovedResume
+      description: |
+        Returns the full draft (hidden sections included, with `included: false`) once it is approved. The gRPC
+        `GetApprovedResume` used by the Application Service returns only the included sections.
+      responses:
+        '200':
+          description: The approved draft
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResumeDraft' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/DraftNotFound' }
+        '409':
+          description: '`RESUME_NOT_APPROVED`'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example: { error: { code: RESUME_NOT_APPROVED, message: Approve your resume before applying. } }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        `AUTH_MODE=jwt` (default). A Supabase access token from the rolefit-auth project with
+        `app_metadata.role = seeker`. The gateway keeps this header; the service verifies it again (ADR-008) and
+        forwards it to Candidate Profile and Job Posting as gRPC metadata.
+    mockUserId:
+      type: apiKey
+      in: header
+      name: X-User-Id
+      description: '`AUTH_MODE=mock` only, for local testing: the seeker''s user id (UUID). Refused when `NODE_ENV=production`.'
+
+  parameters:
+    JobId:
+      name: jobId
+      in: path
+      required: true
+      description: Job id from the Job Posting Service (`job_<ULID>`, or `job_seed_<slug>` for seed data)
+      schema:
+        type: string
+        pattern: '^[A-Za-z0-9_-]{1,100}$'
+      example: job_01JAB3XK9V2M8Q4R7T6W5Y0Z1N
+
+  responses:
+    ValidationError:
+      description: '`VALIDATION_ERROR` (bad job id or body, with `details`) or `MALFORMED_JSON`'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            error:
+              code: VALIDATION_ERROR
+              message: Some fields are invalid
+              details: [{ field: 'sections[0].bullets[1].text', message: Cannot be empty }]
+    Unauthenticated:
+      description: '`UNAUTHENTICATED`: missing, invalid or expired token (or bad `X-User-Id` in mock mode)'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example: { error: { code: UNAUTHENTICATED, message: Missing or invalid access token } }
+    Forbidden:
+      description: '`FORBIDDEN`: the caller is not a seeker'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example: { error: { code: FORBIDDEN, message: Resume drafts are for job seeker accounts only } }
+    DraftNotFound:
+      description: '`RESUME_DRAFT_NOT_FOUND`: no draft for this job yet (generate one first)'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example: { error: { code: RESUME_DRAFT_NOT_FOUND, message: No resume draft for this job yet } }
+    InternalError:
+      description: '`INTERNAL_ERROR`'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    UpstreamError:
+      description: '`UPSTREAM_ERROR`: Job Posting returned an unexpected error'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    ServiceUnavailable:
+      description: '`SERVICE_UNAVAILABLE`: Candidate Profile or Job Posting is down or slower than `GRPC_DEADLINE_MS`'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example: { error: { code: SERVICE_UNAVAILABLE, message: The Job Posting service is unavailable. Please try again. } }
+
+  schemas:
+    ResumeDraft:
+      type: object
+      description: Same shape as `ResumeDraft` in rolefit-frontend `src/lib/types.ts`.
+      required: [id, jobId, candidateId, format, sections, approved, generatedAt, updatedAt]
+      properties:
+        id: { type: string, example: draft_01JAB4C2D3E4F5G6H7J8K9M0NP }
+        jobId: { type: string, example: job_01JAB3XK9V2M8Q4R7T6W5Y0Z1N }
+        candidateId: { type: string, format: uuid, description: "The seeker's user id, which is also their profile id" }
+        format: { $ref: '#/components/schemas/ResumeFormat' }
+        sections:
+          type: array
+          maxItems: 100
+          items: { $ref: '#/components/schemas/ResumeSection' }
+        approved: { type: boolean }
+        approvedAt: { type: string, format: date-time, description: Present only while approved }
+        generatedAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+      example:
+        id: draft_01JAB4C2D3E4F5G6H7J8K9M0NP
+        jobId: job_01JAB3XK9V2M8Q4R7T6W5Y0Z1N
+        candidateId: 3f1c2d4e-5a6b-4c7d-8e9f-0a1b2c3d4e5f
+        format: personal
+        sections:
+          - id: summary
+            kind: summary
+            title: Summary
+            bullets: [{ id: summary-b0, text: Frontend developer, tailored: false }]
+            emphasized: false
+            included: true
+          - id: experience-0
+            kind: experience
+            title: Frontend Developer · Brightline
+            meta: 2024-06 – Present
+            bullets: [{ id: experience-0-b0, text: Built React dashboards, tailored: true }]
+            emphasized: true
+            included: true
+        approved: false
+        generatedAt: '2026-10-11T09:00:00.000Z'
+        updatedAt: '2026-10-11T09:00:00.000Z'
+
+    ResumeSection:
+      type: object
+      required: [id, kind, title, bullets, emphasized, included]
+      properties:
+        id:
+          type: string
+          description: '`summary`, `skills`, `education`, `experience-<n>` or `project-<n>` (position in the profile, stable across regeneration)'
+        kind: { type: string, enum: [summary, experience, project, skills, education] }
+        title: { type: string, description: 'e.g. "Frontend Developer · Brightline" or a project name' }
+        meta: { type: string, description: Dates (experience) or tech list (project); absent when none }
+        bullets:
+          type: array
+          maxItems: 50
+          items: { $ref: '#/components/schemas/ResumeBullet' }
+        emphasized: { type: boolean, description: True when the section matches the job }
+        included: { type: boolean, description: False when the seeker hid the section }
+
+    ResumeBullet:
+      type: object
+      required: [id, text, tailored]
+      properties:
+        id: { type: string, example: experience-0-b0 }
+        text: { type: string, minLength: 1, maxLength: 2000 }
+        tailored: { type: boolean, description: True when the bullet was picked because it matches the job; false once the seeker rewrites it }
+
+    ResumeFormat:
+      type: string
+      enum: [company, personal]
+      description: '`company` = the job''s company resume template, `personal` = the seeker''s default format'
+
+    EditSectionsRequest:
+      type: object
+      required: [sections]
+      properties:
+        sections:
+          type: array
+          maxItems: 100
+          items:
+            type: object
+            required: [id, included, bullets]
+            properties:
+              id: { type: string, pattern: '^[A-Za-z0-9_-]{1,100}$' }
+              included: { type: boolean }
+              bullets:
+                type: array
+                maxItems: 50
+                items:
+                  type: object
+                  required: [id, text]
+                  properties:
+                    id: { type: string, pattern: '^[A-Za-z0-9_-]{1,100}$' }
+                    text: { type: string, minLength: 1, maxLength: 2000, description: Trimmed; must not be empty }
+
+    SelectFormatRequest:
+      type: object
+      required: [format]
+      properties:
+        format: { $ref: '#/components/schemas/ResumeFormat' }
+
+    Health:
+      type: object
+      required: [status, service, db]
+      properties:
+        status: { type: string, enum: [ok, degraded] }
+        service: { type: string, example: resume-preparation-service }
+        db: { type: string, enum: [connected, disconnected] }
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, example: VALIDATION_ERROR }
+            message: { type: string }
+            details:
+              type: array
+              description: Only on `VALIDATION_ERROR`
+              items:
+                type: object
+                required: [field, message]
+                properties:
+                  field: { type: string, example: 'sections[2].bullets[0].text' }
+                  message: { type: string }

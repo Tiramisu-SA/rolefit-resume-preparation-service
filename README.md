@@ -9,6 +9,8 @@ resume when the seeker applies.
 - Owns the **Resume Draft Store** (MongoDB, database `rolefit_resume_preparation`). No other service may read it.
 - Reads the profile from the Candidate Profile Service and the job from the Job Posting Service over gRPC.
 
+API reference for other teams: [`API.md`](API.md) and [`openapi.yaml`](openapi.yaml).
+
 ## Quick start
 
 ```bash
