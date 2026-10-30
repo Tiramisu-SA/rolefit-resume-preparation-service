@@ -43,13 +43,19 @@ against a real MongoDB (the test database is dropped afterwards).
                                                                                       ├─▶ ResumeService ─┬─▶ ResumeDraftRepository ─▶ MongoDB
  Application Service ── gRPC GetApprovedResume ──▶ resume-preparation.grpc.ts ────────┘                  ├─▶ CandidateProfileClient ─ gRPC GetProfile ─▶ Candidate Profile
                                                                                                           ├─▶ JobPostingClient ─ gRPC GetJob / GetResumeTemplate ─▶ Job Posting
-                                                                                                          └─▶ AIModelAdapter.tailorResume() (rule-based placeholder)
+                                                                                                          └─▶ AIModelAdapter.tailorResume() (Gemini or rule-based)
 ```
 
 - **Controllers / gRPC handlers** only translate input, output and errors. All rules live in `ResumeService`, shared by both.
-- **AI Model Adapter** is a module, not a microservice. `RuleBasedTailorAdapter` selects and reorders the profile's own
-  content: bullets that mention a required or preferred job skill are marked `tailored` and moved first, matching skills
-  are listed first. It never writes new text.
+- **AI Model Adapter** is a module, not a microservice, chosen by `AI_PROVIDER`:
+  - `rule-based` (default): `RuleBasedTailorAdapter` selects and reorders the profile's own content: bullets that mention
+    a required or preferred job skill are marked `tailored` and moved first, matching skills are listed first. It never
+    writes new text.
+  - `gemini` (needs `AI_API_KEY` and `AI_MODEL`): `GeminiTailorAdapter` asks the Gemini API for a JSON plan (which
+    bullets, their order and wording, what is relevant). Titles, dates, project names, tech and education are always
+    copied from the profile; a rewrite that adds a number is replaced by the source text. Name, location and education
+    are not sent. `FallbackTailorAdapter` uses the rule-based adapter whenever Gemini fails (timeout, 429 quota, bad
+    JSON) or its result fails the grounding check, so a draft is always produced. Tests never call the real API.
 - **Grounding check** (`services/grounding.ts`): every generated draft is checked against the profile before it is saved.
   Sections must point at real profile items; employer, job title, dates, project names, tech, skills and education must
   be the profile's own; no section may have more bullets than its source. Bullet *wording* is not compared, because
@@ -129,7 +135,7 @@ src/
   routes/ controllers/ REST transport
   grpc/                gRPC server + clients for Candidate Profile and Job Posting
   services/            ResumeService (business rules), grounding check
-  adapters/ai/         AIModelAdapter interface + rule-based placeholder
+  adapters/ai/         AIModelAdapter interface, Gemini client + adapter, rule-based fallback
   repositories/ models/ Resume Draft Store (MongoDB)
   validation/ types/ utils/
 tests/                 node:test suites with fakes; MongoDB integration test

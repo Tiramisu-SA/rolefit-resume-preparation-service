@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 dotenv.config({ quiet: true });
 
 export type AuthMode = 'jwt' | 'mock';
-export type AiProvider = 'rule-based';
+export type AiProvider = 'rule-based'|'gemini';
 
 export interface AppConfig {
   nodeEnv: string;
@@ -27,6 +27,8 @@ export interface AppConfig {
   supabasePublishableKey: string;
   aiProvider: AiProvider;
   aiApiKey: string;
+  /** Gemini model id from AI Studio. Required when aiProvider is 'gemini'. */
+  aiModel: string;
 }
 
 function toInt(value: string | undefined, fallback: number, name: string, errors: string[]): number {
@@ -56,7 +58,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   }
 
   const rawAi = env.AI_PROVIDER?.trim() || 'rule-based';
-  if (rawAi !== 'rule-based') errors.push(`AI_PROVIDER must be "rule-based" (got "${rawAi}"); LLM providers are a TODO`);
+  if (rawAi !== 'rule-based' && rawAi !== 'gemini') errors.push(`AI_PROVIDER must be "rule-based" or "gemini" (got "${rawAi}")`);
+  const aiProvider: AiProvider = rawAi === 'gemini' ? 'gemini' : 'rule-based';
+  const aiApiKey = env.AI_API_KEY?.trim() ?? '';
+  const aiModel = env.AI_MODEL?.trim() ?? '';
+  if (aiProvider === 'gemini' && (!aiApiKey || !aiModel)) errors.push('AI_API_KEY and AI_MODEL are required when AI_PROVIDER=gemini');
 
   const config: AppConfig = {
     nodeEnv,
@@ -71,8 +77,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     authMode,
     supabaseUrl,
     supabasePublishableKey,
-    aiProvider: 'rule-based',
-    aiApiKey: env.AI_API_KEY ?? '',
+    aiProvider,
+    aiApiKey,
+    aiModel,
   };
 
   if (errors.length) throw new Error(`Invalid configuration:\n- ${errors.join('\n- ')}`);

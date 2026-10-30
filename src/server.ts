@@ -1,8 +1,12 @@
+import type { AIModelAdapter } from './adapters/ai/ai.types';
+import { FallbackTailorAdapter } from './adapters/ai/fallback.adapter';
+import { GeminiTailorAdapter } from './adapters/ai/gemini.adapter';
+import { createGeminiClient } from './adapters/ai/gemini.client';
 import { RuleBasedTailorAdapter } from './adapters/ai/rule-based.adapter';
 import { buildApp } from './app';
 import { createClaimsVerifier } from './auth/supabase';
 import { connectDatabase, disconnectDatabase, isDatabaseConnected, redactMongoUri } from './config/database';
-import { loadConfig } from './config/env';
+import { loadConfig, type AppConfig } from './config/env';
 import { CandidateProfileClient } from './grpc/candidate-profile.client';
 import { JobPostingClient } from './grpc/job-posting.client';
 import { startGrpcServer } from './grpc/resume-preparation.grpc';
@@ -10,6 +14,14 @@ import { identify, identifyFromHeader } from './middleware/identity.middleware';
 import { MongoResumeDraftRepository } from './repositories/mongo-resume-draft.repository';
 import { ResumeService } from './services/resume.service';
 import { logger } from './utils/logger';
+
+/** AI_PROVIDER=gemini: Gemini with the rule-based adapter as fallback. Otherwise rule-based only. */
+function createAiAdapter(config: AppConfig): AIModelAdapter {
+  const ruleBased = new RuleBasedTailorAdapter();
+  if (config.aiProvider !== 'gemini') return ruleBased;
+  logger.info(`AI provider: Gemini (${config.aiModel}), falling back to rule-based on errors`);
+  return new FallbackTailorAdapter(new GeminiTailorAdapter(createGeminiClient({ apiKey: config.aiApiKey, model: config.aiModel })), ruleBased);
+}
 
 /** Composition root: the only place concrete classes are wired together. */
 async function main(): Promise<void> {
@@ -26,8 +38,7 @@ async function main(): Promise<void> {
     drafts: new MongoResumeDraftRepository(),
     profiles: new CandidateProfileClient(config.candidateProfileGrpcUrl, config.grpcDeadlineMs),
     jobs: new JobPostingClient(config.jobPostingGrpcUrl, config.grpcDeadlineMs),
-    // TODO: an LLM-backed adapter selected by AI_PROVIDER (see README, "AI Model Adapter").
-    ai: new RuleBasedTailorAdapter(),
+    ai: createAiAdapter(config),
   });
 
   if (config.authMode === 'mock') logger.warn('AUTH_MODE=mock: trusting the X-User-Id header. Do not use this outside local development.');
