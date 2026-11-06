@@ -3,6 +3,7 @@ import * as grpc from '@grpc/grpc-js';
 import * as protoLoader from '@grpc/proto-loader';
 import { AppError, ServiceUnavailableError, UpstreamError } from '../utils/errors';
 import { logger } from '../utils/logger';
+import { REQUEST_ID_HEADER } from '../utils/request-id';
 
 /** Message objects as @grpc/proto-loader returns them (keepCase: snake_case keys, enums as strings). */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -26,13 +27,18 @@ export function loadProto(fileName: string): grpc.GrpcObject {
   return grpc.loadPackageDefinition(definition);
 }
 
-/**
- * The caller's access token, forwarded as `authorization` metadata so services
- * that verify JWTs (ADR-008) see who is asking. Undefined in AUTH_MODE=mock.
- */
-export function callerMetadata(accessToken?: string): grpc.Metadata {
+/** What an upstream gRPC call forwards about the request it is made for. */
+export interface CallContext {
+  /** Sent as `authorization` metadata so services that verify JWTs (ADR-008) see who is asking. Undefined in AUTH_MODE=mock. */
+  accessToken?: string;
+  /** Sent as `x-request-id` metadata so the upstream service's log lines match this request. */
+  requestId?: string;
+}
+
+export function callerMetadata({ accessToken, requestId }: CallContext = {}): grpc.Metadata {
   const metadata = new grpc.Metadata();
   if (accessToken) metadata.set('authorization', `Bearer ${accessToken}`);
+  if (requestId) metadata.set(REQUEST_ID_HEADER, requestId);
   return metadata;
 }
 
@@ -59,7 +65,10 @@ export function callUnary(
         return;
       }
       const mapped = mapError(error);
-      if (!mapped) logger.error(`${service} gRPC error`, { code: error.code, details: error.details });
+      if (!mapped) {
+        const [requestId] = metadata.get(REQUEST_ID_HEADER);
+        logger.error(`[${requestId ?? '-'}] ${service} gRPC error`, { code: error.code, details: error.details });
+      }
       reject(mapped ?? new UpstreamError(service));
     });
   });

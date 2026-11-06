@@ -1,16 +1,16 @@
 import * as grpc from '@grpc/grpc-js';
 import { EDUCATION_LEVELS, JOB_STATUSES, JobPosting, ResumeTemplateInfo, SKILL_LEVELS } from '../types/domain.types';
 import { jobNotFound, NotFoundError } from '../utils/errors';
-import { callerMetadata, callUnary, fromEnum, loadProto, Msg, strings, text, UnaryCall } from './grpc.utils';
+import { CallContext, callerMetadata, callUnary, fromEnum, loadProto, Msg, strings, text, UnaryCall } from './grpc.utils';
 
 const SERVICE = 'job';
 
 /** What ResumeService needs from the Job Posting Service (lets tests pass a fake). */
 export interface JobPostingReader {
   /** A job the seeker can see (OPEN or CLOSED). Rejects with JOB_NOT_FOUND. */
-  getJob(jobId: string, accessToken?: string): Promise<JobPosting>;
+  getJob(jobId: string, context?: CallContext): Promise<JobPosting>;
   /** The job's company resume template, or null when it has none. Metadata only, never the file. */
-  getResumeTemplate(jobId: string, accessToken?: string): Promise<ResumeTemplateInfo | null>;
+  getResumeTemplate(jobId: string, context?: CallContext): Promise<ResumeTemplateInfo | null>;
 }
 
 type Loaded = {
@@ -65,20 +65,20 @@ export class JobPostingClient implements JobPostingReader {
     this.getResumeTemplateRpc = rpc.GetResumeTemplate.bind(client);
   }
 
-  async getJob(jobId: string, accessToken?: string): Promise<JobPosting> {
+  async getJob(jobId: string, context?: CallContext): Promise<JobPosting> {
     const response = await callUnary(
       SERVICE,
       this.getJobRpc,
       { job_id: jobId },
       this.deadlineMs,
       (error) => (error.code === grpc.status.NOT_FOUND || error.code === grpc.status.INVALID_ARGUMENT ? jobNotFound() : undefined),
-      callerMetadata(accessToken),
+      callerMetadata(context),
     );
     if (!response.job) throw jobNotFound();
     return toJobPosting(response.job);
   }
 
-  async getResumeTemplate(jobId: string, accessToken?: string): Promise<ResumeTemplateInfo | null> {
+  async getResumeTemplate(jobId: string, context?: CallContext): Promise<ResumeTemplateInfo | null> {
     try {
       const response = await callUnary(
         SERVICE,
@@ -86,7 +86,7 @@ export class JobPostingClient implements JobPostingReader {
         { job_id: jobId, include_content: false },
         this.deadlineMs,
         (error) => (error.code === grpc.status.NOT_FOUND ? new NotFoundError('TEMPLATE_NOT_FOUND', 'No template') : undefined),
-        callerMetadata(accessToken),
+        callerMetadata(context),
       );
       const t: Msg | undefined = response.template;
       return t ? { id: t.id, fileName: t.file_name, contentType: t.content_type } : null;

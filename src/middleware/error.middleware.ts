@@ -12,7 +12,7 @@ export function notFoundHandler(req: Request, res: Response): void {
  * `{ error: { code, message, details? } }`. Unknown errors are logged and
  * answered with a generic 500 so internal details never leak.
  */
-export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction): void {
+export function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunction): void {
   if ((err as { type?: unknown })?.type === 'entity.parse.failed') {
     res.status(400).json({ error: { code: 'MALFORMED_JSON', message: 'The request body is not valid JSON' } });
     return;
@@ -23,6 +23,6 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
     return;
   }
 
-  logger.error('Unhandled error', err);
+  logger.error(`[${req.id}] Unhandled error`, err);
   res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
 }

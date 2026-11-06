@@ -3,6 +3,7 @@ import type { ResumeService } from '../services/resume.service';
 import type { ResumeDraft } from '../types/domain.types';
 import { AppError } from '../utils/errors';
 import { logger } from '../utils/logger';
+import { REQUEST_ID_HEADER, resolveRequestId } from '../utils/request-id';
 import { isUuid, parseJobId } from '../validation/resume.validation';
 import { loadProto, Msg } from './grpc.utils';
 
@@ -32,7 +33,7 @@ export function toProtoApprovedResume(draft: ResumeDraft): Msg {
   };
 }
 
-function toGrpcError(err: unknown): Partial<grpc.ServiceError> {
+function toGrpcError(err: unknown, requestId: string): Partial<grpc.ServiceError> {
   if (err instanceof AppError) {
     const code =
       err.httpStatus === 400
@@ -48,19 +49,29 @@ function toGrpcError(err: unknown): Partial<grpc.ServiceError> {
     metadata.set('x-error-code', err.code);
     return { code, details: err.message, metadata };
   }
-  logger.error('Unhandled gRPC error', err);
+  logger.error(`[${requestId}] Unhandled gRPC error`, err);
   return { code: grpc.status.INTERNAL, details: 'Internal server error' };
 }
 
 export function createResumePreparationHandlers(resumes: ResumeService): grpc.UntypedServiceImplementation {
   const GetApprovedResume: grpc.handleUnaryCall<Msg, Msg> = async (call, callback) => {
+    // The Application Service forwards the gateway's id as `x-request-id` metadata.
+    const requestId = resolveRequestId(call.metadata.get(REQUEST_ID_HEADER)[0]);
+    const start = process.hrtime.bigint();
+    const done = (status: string) => {
+      const ms = Number(process.hrtime.bigint() - start) / 1e6;
+      logger.info(`[${requestId}] gRPC GetApprovedResume ${status} ${ms.toFixed(1)}ms`);
+    };
     try {
       const { candidate_id: candidateId, job_id: jobId } = call.request;
       if (!isUuid(candidateId)) throw new AppError('candidate_id must be a UUID', 400, 'VALIDATION_ERROR');
       const draft = await resumes.getApprovedResume(candidateId, parseJobId(jobId));
+      done('OK');
       callback(null, { resume: toProtoApprovedResume(draft) });
     } catch (err) {
-      callback(toGrpcError(err));
+      const error = toGrpcError(err, requestId);
+      done(grpc.status[error.code ?? grpc.status.INTERNAL]);
+      callback(error);
     }
   };
   return { GetApprovedResume };
