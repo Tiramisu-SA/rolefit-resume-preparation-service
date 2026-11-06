@@ -4,6 +4,8 @@ export interface TailorResumeInput {
   /** The candidate's verified profile: the only allowed source of resume content (ADR-004). */
   profile: CandidateProfile;
   job: JobPosting;
+  /** For log lines only; never sent to the model. */
+  requestId?: string;
 }
 
 /**

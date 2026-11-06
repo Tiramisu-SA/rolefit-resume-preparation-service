@@ -1,4 +1,5 @@
 import type { CandidateProfileReader } from '../../src/grpc/candidate-profile.client';
+import type { CallContext } from '../../src/grpc/grpc.utils';
 import type { JobPostingReader } from '../../src/grpc/job-posting.client';
 import type { ResumeDraftRepository } from '../../src/repositories/resume-draft.repository';
 import { ResumeService } from '../../src/services/resume.service';
@@ -66,8 +67,10 @@ export function makeJob(overrides: Partial<JobPosting> = {}): JobPosting {
 export class FakeProfiles implements CandidateProfileReader {
   profiles = new Map<string, CandidateProfile>([[SEEKER_ID, makeProfile()]]);
   tokens: (string | undefined)[] = [];
-  async getProfile(candidateId: string, accessToken?: string) {
-    this.tokens.push(accessToken);
+  requestIds: (string | undefined)[] = [];
+  async getProfile(candidateId: string, context?: CallContext) {
+    this.tokens.push(context?.accessToken);
+    this.requestIds.push(context?.requestId);
     return this.profiles.get(candidateId) ?? null;
   }
 }

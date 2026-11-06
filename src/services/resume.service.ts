@@ -1,17 +1,19 @@
 import { ulid } from 'ulid';
 import type { AIModelAdapter } from '../adapters/ai/ai.types';
 import type { CandidateProfileReader } from '../grpc/candidate-profile.client';
+import type { CallContext } from '../grpc/grpc.utils';
 import type { JobPostingReader } from '../grpc/job-posting.client';
 import type { ResumeDraftRepository } from '../repositories/resume-draft.repository';
 import type { ResumeDraft, ResumeFormat } from '../types/domain.types';
 import { ConflictError, draftNotFound, FieldError, ValidationError } from '../utils/errors';
 import { assertGrounded } from './grounding';
 
-/** Who is calling: the seeker's user id (= their candidate profile id) and, in JWT mode, their token. */
-export interface Caller {
+/**
+ * Who is calling: the seeker's user id (= their candidate profile id) plus what is
+ * forwarded to upstream gRPC calls: their token (JWT mode) and the request id.
+ */
+export interface Caller extends CallContext {
   userId: string;
-  /** Forwarded to upstream gRPC calls so services that verify JWTs see the caller. */
-  accessToken?: string;
 }
 
 /** What a seeker may change in a draft: which sections are included and the wording of each bullet. */
@@ -56,13 +58,13 @@ export class ResumeService {
   /** Builds (or rebuilds) the seeker's draft for a job. Regenerating replaces edits and clears approval. */
   async generateTailoredResume(caller: Caller, jobId: string): Promise<ResumeDraft> {
     const [job, profile] = await Promise.all([
-      this.jobs.getJob(jobId, caller.accessToken),
-      this.profiles.getProfile(caller.userId, caller.accessToken),
+      this.jobs.getJob(jobId, caller),
+      this.profiles.getProfile(caller.userId, caller),
     ]);
     if (!profile) throw new ConflictError('PROFILE_REQUIRED', 'Create your profile before tailoring a resume.');
     if (job.status !== 'OPEN') throw new ConflictError('JOB_NOT_OPEN', 'This job is not accepting applications.');
 
-    const sections = await this.ai.tailorResume({ profile, job });
+    const sections = await this.ai.tailorResume({ profile, job, requestId: caller.requestId });
     assertGrounded(sections, profile);
 
     const existing = await this.drafts.findByCandidateAndJob(caller.userId, jobId);
@@ -132,7 +134,7 @@ export class ResumeService {
   async selectResumeFormat(caller: Caller, jobId: string, format: ResumeFormat): Promise<ResumeDraft> {
     const draft = await this.getResumeDraft(caller, jobId);
     if (format === 'company') {
-      const job = await this.jobs.getJob(jobId, caller.accessToken);
+      const job = await this.jobs.getJob(jobId, caller);
       if (!job.applicationSettings.resumeTemplateId) {
         throw new ConflictError('NO_COMPANY_TEMPLATE', 'This job has no company resume template. Use your default format.');
       }

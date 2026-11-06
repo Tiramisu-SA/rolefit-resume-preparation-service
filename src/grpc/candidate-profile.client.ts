@@ -1,14 +1,14 @@
 import * as grpc from '@grpc/grpc-js';
 import { CandidateProfile, SKILL_LEVELS } from '../types/domain.types';
 import { NotFoundError } from '../utils/errors';
-import { callerMetadata, callUnary, fromEnum, loadProto, Msg, strings, text, UnaryCall } from './grpc.utils';
+import { CallContext, callerMetadata, callUnary, fromEnum, loadProto, Msg, strings, text, UnaryCall } from './grpc.utils';
 
 const SERVICE = 'profile';
 
 /** What ResumeService needs from the Candidate Profile Service (lets tests pass a fake). */
 export interface CandidateProfileReader {
   /** The candidate's profile, or null when they have not created one yet. */
-  getProfile(candidateId: string, accessToken?: string): Promise<CandidateProfile | null>;
+  getProfile(candidateId: string, context?: CallContext): Promise<CandidateProfile | null>;
 }
 
 type Loaded = {
@@ -58,7 +58,7 @@ export class CandidateProfileClient implements CandidateProfileReader {
     this.getProfileRpc = (client as unknown as { GetProfile: UnaryCall }).GetProfile.bind(client);
   }
 
-  async getProfile(candidateId: string, accessToken?: string): Promise<CandidateProfile | null> {
+  async getProfile(candidateId: string, context?: CallContext): Promise<CandidateProfile | null> {
     try {
       const response = await callUnary(
         SERVICE,
@@ -66,7 +66,7 @@ export class CandidateProfileClient implements CandidateProfileReader {
         { candidate_id: candidateId },
         this.deadlineMs,
         (error) => (error.code === grpc.status.NOT_FOUND ? new NotFoundError('PROFILE_NOT_FOUND', 'Profile not found') : undefined),
-        callerMetadata(accessToken),
+        callerMetadata(context),
       );
       return response.profile ? toCandidateProfile(response.profile) : null;
     } catch (error) {

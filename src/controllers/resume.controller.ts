@@ -2,7 +2,7 @@ import type { Request, Response } from 'express';
 import type { Caller, ResumeService } from '../services/resume.service';
 import { parseFormat, parseJobId, parseSectionEdits } from '../validation/resume.validation';
 
-const caller = (req: Request): Caller => ({ userId: req.userId!, accessToken: req.accessToken });
+const caller = (req: Request): Caller => ({ userId: req.userId!, accessToken: req.accessToken, requestId: req.id });
 
 /** REST transport only: parse input, call ResumeService, send JSON. Errors go to the error middleware. */
 export class ResumeController {
