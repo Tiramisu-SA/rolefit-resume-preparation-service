@@ -37,6 +37,7 @@ message CandidateProfile {
   JobPreference preferences = 12;  // unset when the candidate has none
   bool verified = 13;
   string updated_at = 14;          // ISO-8601
+  string email = 15;  // contact email, "" when unknown. Internal: used by the Application Service for reminder emails (FR-17).
 }
 
 // proficiency_level: BASIC | INTERMEDIATE | ADVANCED, "" when unknown

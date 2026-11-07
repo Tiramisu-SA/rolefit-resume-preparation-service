@@ -54,31 +54,44 @@ function toGrpcError(err: unknown, requestId: string): Partial<grpc.ServiceError
 }
 
 export function createResumePreparationHandlers(resumes: ResumeService): grpc.UntypedServiceImplementation {
-  const GetApprovedResume: grpc.handleUnaryCall<Msg, Msg> = async (call, callback) => {
-    // The Application Service forwards the gateway's id as `x-request-id` metadata.
-    const requestId = resolveRequestId(call.metadata.get(REQUEST_ID_HEADER)[0]);
-    const start = process.hrtime.bigint();
-    const done = (status: string) => {
-      logger.info('rpc completed', {
-        requestId,
-        rpc: 'GetApprovedResume',
-        grpcStatus: status,
-        durationMs: Math.round(Number(process.hrtime.bigint() - start) / 1e5) / 10,
-      });
+  /** Wraps a unary handler with request-id resolution, completion logging and error mapping. */
+  const unary =
+    (rpc: string, handle: (request: Msg) => Promise<Msg>): grpc.handleUnaryCall<Msg, Msg> =>
+    async (call, callback) => {
+      // The Application Service forwards the gateway's id as `x-request-id` metadata.
+      const requestId = resolveRequestId(call.metadata.get(REQUEST_ID_HEADER)[0]);
+      const start = process.hrtime.bigint();
+      const done = (status: string) => {
+        logger.info('rpc completed', {
+          requestId,
+          rpc,
+          grpcStatus: status,
+          durationMs: Math.round(Number(process.hrtime.bigint() - start) / 1e5) / 10,
+        });
+      };
+      try {
+        const response = await handle(call.request);
+        done('OK');
+        callback(null, response);
+      } catch (err) {
+        const error = toGrpcError(err, requestId);
+        done(grpc.status[error.code ?? grpc.status.INTERNAL]);
+        callback(error);
+      }
     };
-    try {
-      const { candidate_id: candidateId, job_id: jobId } = call.request;
-      if (!isUuid(candidateId)) throw new AppError('candidate_id must be a UUID', 400, 'VALIDATION_ERROR');
-      const draft = await resumes.getApprovedResume(candidateId, parseJobId(jobId));
-      done('OK');
-      callback(null, { resume: toProtoApprovedResume(draft) });
-    } catch (err) {
-      const error = toGrpcError(err, requestId);
-      done(grpc.status[error.code ?? grpc.status.INTERNAL]);
-      callback(error);
-    }
-  };
-  return { GetApprovedResume };
+
+  const GetApprovedResume = unary('GetApprovedResume', async ({ candidate_id: candidateId, job_id: jobId }) => {
+    if (!isUuid(candidateId)) throw new AppError('candidate_id must be a UUID', 400, 'VALIDATION_ERROR');
+    const draft = await resumes.getApprovedResume(candidateId, parseJobId(jobId));
+    return { resume: toProtoApprovedResume(draft) };
+  });
+
+  const ListDraftsForJobs = unary('ListDraftsForJobs', async ({ job_ids: jobIds }) => {
+    const drafts = await resumes.listDraftsForJobs(jobIds ?? []);
+    return { drafts: drafts.map((d) => ({ candidate_id: d.candidateId, job_id: d.jobId })) };
+  });
+
+  return { GetApprovedResume, ListDraftsForJobs };
 }
 
 /** Starts the internal gRPC server. Resolves with the bound port (useful when port 0 is requested in tests). */

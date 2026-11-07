@@ -43,6 +43,11 @@ export class MongoResumeDraftRepository implements ResumeDraftRepository {
     return doc ? toDraft(doc) : null;
   }
 
+  async listByJobIds(jobIds: string[]): Promise<Array<{ candidateId: string; jobId: string }>> {
+    const docs = await ResumeDraftModel.find({ jobId: { $in: jobIds } }, { candidateId: 1, jobId: 1 }).lean<DraftDoc[]>();
+    return docs.map((d) => ({ candidateId: d.candidateId, jobId: d.jobId }));
+  }
+
   async save(draft: ResumeDraft): Promise<ResumeDraft> {
     const doc = await ResumeDraftModel.findOneAndUpdate(
       { candidateId: draft.candidateId, jobId: draft.jobId },

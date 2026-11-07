@@ -99,6 +99,9 @@ export class InMemoryDrafts implements ResumeDraftRepository {
     const row = this.rows.find((d) => d.candidateId === candidateId && d.jobId === jobId);
     return row ? structuredClone(row) : null;
   }
+  async listByJobIds(jobIds: string[]) {
+    return this.rows.filter((d) => jobIds.includes(d.jobId)).map((d) => ({ candidateId: d.candidateId, jobId: d.jobId }));
+  }
   async save(draft: ResumeDraft) {
     const i = this.rows.findIndex((d) => d.candidateId === draft.candidateId && d.jobId === draft.jobId);
     const stored = structuredClone({ ...draft, id: i >= 0 ? this.rows[i].id : draft.id });
