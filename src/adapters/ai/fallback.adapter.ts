@@ -21,7 +21,10 @@ export class FallbackTailorAdapter implements AIModelAdapter {
       return sections;
     } catch (err) {
       // Only the reason is logged, never profile content.
-      logger.warn(`[${input.requestId ?? '-'}] AI tailoring failed, using the rule-based adapter:`, err instanceof Error ? err.message : err);
+      logger.warn('AI tailoring failed, using the rule-based adapter', {
+        requestId: input.requestId,
+        reason: err instanceof Error ? err.message : String(err),
+      });
       return this.fallback.tailorResume(input);
     }
   }

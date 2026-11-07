@@ -31,7 +31,7 @@ async function main(): Promise<void> {
     await connectDatabase(config.mongodbUri);
   } catch (err) {
     // Keep running so /health can report it; draft operations fail with 500 until Mongo is back.
-    logger.error(`Could not connect to MongoDB at ${redactMongoUri(config.mongodbUri)}:`, (err as Error).message);
+    logger.error('Could not connect to MongoDB', { uri: redactMongoUri(config.mongodbUri), reason: (err as Error).message });
   }
 
   const resumeService = new ResumeService({
@@ -63,6 +63,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  logger.error('Fatal startup error:', err instanceof Error ? err.message : err);
+  logger.error('Fatal startup error', { reason: err instanceof Error ? err.message : String(err) });
   process.exit(1);
 });
