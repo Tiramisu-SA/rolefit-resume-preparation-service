@@ -120,10 +120,18 @@ grpcurl -plaintext -import-path proto -proto resume-preparation.proto \
 
 The service keeps the `X-Request-Id` header set by the API Gateway (REST) or the `x-request-id` metadata sent by the
 Application Service (gRPC), using the same rule as the gateway: 1–128 letters, digits, `.`, `_`, `-`, otherwise a new
-UUID. Every request is logged with it (`[<id>] POST /api/drafts/job_1/generate 201 412.3ms`,
-`[<id>] gRPC GetApprovedResume OK 3.1ms`), REST responses return it in `X-Request-Id`, and the gRPC calls to Candidate
-Profile and Job Posting forward it as `x-request-id` metadata. To trace one request, search every service's logs for
-its id.
+UUID. REST responses return it in `X-Request-Id`, and the gRPC calls to Candidate Profile and Job Posting forward it as
+`x-request-id` metadata. To trace one request, search every service's logs for its id.
+
+Logs are JSON, one object per line, in the same format as the other services:
+
+```json
+{"time":"...","level":"info","service":"resume-preparation","requestId":"<id>","message":"request completed","method":"POST","path":"/api/drafts/job_1/generate","status":201,"durationMs":412.3}
+{"time":"...","level":"info","service":"resume-preparation","requestId":"<id>","message":"rpc completed","rpc":"GetApprovedResume","grpcStatus":"OK","durationMs":3.1}
+```
+
+An unavailable upstream is logged with its name (`"upstream":"job"`). `/health` is not logged, paths leave out query
+strings, and the id is not sent to AI providers.
 
 ## Contracts used
 

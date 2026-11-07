@@ -49,7 +49,7 @@ function toGrpcError(err: unknown, requestId: string): Partial<grpc.ServiceError
     metadata.set('x-error-code', err.code);
     return { code, details: err.message, metadata };
   }
-  logger.error(`[${requestId}] Unhandled gRPC error`, err);
+  logger.error('Unhandled gRPC error', { requestId }, err);
   return { code: grpc.status.INTERNAL, details: 'Internal server error' };
 }
 
@@ -59,8 +59,12 @@ export function createResumePreparationHandlers(resumes: ResumeService): grpc.Un
     const requestId = resolveRequestId(call.metadata.get(REQUEST_ID_HEADER)[0]);
     const start = process.hrtime.bigint();
     const done = (status: string) => {
-      const ms = Number(process.hrtime.bigint() - start) / 1e6;
-      logger.info(`[${requestId}] gRPC GetApprovedResume ${status} ${ms.toFixed(1)}ms`);
+      logger.info('rpc completed', {
+        requestId,
+        rpc: 'GetApprovedResume',
+        grpcStatus: status,
+        durationMs: Math.round(Number(process.hrtime.bigint() - start) / 1e5) / 10,
+      });
     };
     try {
       const { candidate_id: candidateId, job_id: jobId } = call.request;

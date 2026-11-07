@@ -60,15 +60,15 @@ export function callUnary(
         resolve(response);
         return;
       }
+      const [requestId] = metadata.get(REQUEST_ID_HEADER);
+      const failure = { requestId, upstream: service, code: error.code, details: error.details };
       if (error.code === grpc.status.UNAVAILABLE || error.code === grpc.status.DEADLINE_EXCEEDED) {
+        logger.error(`${service} service is unavailable`, failure);
         reject(new ServiceUnavailableError(service));
         return;
       }
       const mapped = mapError(error);
-      if (!mapped) {
-        const [requestId] = metadata.get(REQUEST_ID_HEADER);
-        logger.error(`[${requestId ?? '-'}] ${service} gRPC error`, { code: error.code, details: error.details });
-      }
+      if (!mapped) logger.error(`${service} gRPC error`, failure);
       reject(mapped ?? new UpstreamError(service));
     });
   });
