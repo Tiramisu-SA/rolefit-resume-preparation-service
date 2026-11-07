@@ -10,5 +10,7 @@ export interface ResumeDraftRepository {
    * Inserts or replaces the draft for (draft.candidateId, draft.jobId). Returns what was stored.
    * `draft.id` is used only on insert: an existing draft keeps its id.
    */
+  /** Candidate/job pairs of every draft (approved or not) for these jobs. */
+  listByJobIds(jobIds: string[]): Promise<Array<{ candidateId: string; jobId: string }>>;
   save(draft: ResumeDraft): Promise<ResumeDraft>;
 }

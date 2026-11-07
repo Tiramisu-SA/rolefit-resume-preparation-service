@@ -6,7 +6,10 @@ import type { JobPostingReader } from '../grpc/job-posting.client';
 import type { ResumeDraftRepository } from '../repositories/resume-draft.repository';
 import type { ResumeDraft, ResumeFormat } from '../types/domain.types';
 import { ConflictError, draftNotFound, FieldError, ValidationError } from '../utils/errors';
+import { parseJobId } from '../validation/resume.validation';
 import { assertGrounded } from './grounding';
+
+const MAX_JOB_IDS_PER_LIST = 100;
 
 /**
  * Who is calling: the seeker's user id (= their candidate profile id) plus what is
@@ -152,6 +155,15 @@ export class ResumeService {
     if (draft.approved) return draft;
     const at = this.now().toISOString();
     return this.drafts.save({ ...draft, approved: true, approvedAt: at, updatedAt: at });
+  }
+
+  /** Candidate/job pairs that have a draft for any of these jobs (deadline reminders, FR-17). */
+  async listDraftsForJobs(jobIds: string[]): Promise<Array<{ candidateId: string; jobId: string }>> {
+    if (jobIds.length > MAX_JOB_IDS_PER_LIST) {
+      throw new ValidationError([{ field: 'jobIds', message: `At most ${MAX_JOB_IDS_PER_LIST} job ids per request` }]);
+    }
+    const valid = jobIds.map(parseJobId);
+    return valid.length === 0 ? [] : this.drafts.listByJobIds(valid);
   }
 
   /** The approved draft for an application. Used by the Application Service over gRPC and by the web app. */

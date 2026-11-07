@@ -151,6 +151,22 @@ grpcurl -plaintext -import-path proto -proto resume-preparation.proto \
   localhost:50053 rolefit.resumepreparation.v1.ResumePreparationService/GetApprovedResume
 ```
 
+## gRPC: `ListDraftsForJobs` (for deadline reminders, FR-17)
+
+Lists the candidate/job pairs that have a resume draft (approved or not) for the given jobs. The Application Service
+uses it to find seekers who prepared a resume but have not applied when a deadline is within 48 hours.
+
+```proto
+rpc ListDraftsForJobs (ListDraftsForJobsRequest) returns (ListDraftsForJobsResponse);
+
+message ListDraftsForJobsRequest { repeated string job_ids = 1; }  // at most 100
+message DraftRef { string candidate_id = 1; string job_id = 2; }
+message ListDraftsForJobsResponse { repeated DraftRef drafts = 1; }
+```
+
+An empty `job_ids` returns an empty list. `INVALID_ARGUMENT` (`x-error-code: VALIDATION_ERROR`) when there are more than
+100 job ids or any job id is malformed.
+
 ## What this service calls
 
 | Service | RPC | Why | Contract copy |
