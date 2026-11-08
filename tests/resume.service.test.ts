@@ -26,9 +26,9 @@ describe('generateTailoredResume', () => {
     assert.deepEqual(profiles.tokens, ['token-abc']);
   });
 
-  it('offers the company format first when the job has a company template', async () => {
+  it("uses the seeker's own format even when the job has a company template", async () => {
     const { service } = makeService();
-    assert.equal((await service.generateTailoredResume(seeker, TEMPLATE_JOB_ID)).format, 'company');
+    assert.equal((await service.generateTailoredResume(seeker, TEMPLATE_JOB_ID)).format, 'personal');
   });
 
   it('needs a profile and an open job', async () => {
@@ -111,9 +111,9 @@ describe('selectResumeFormat', () => {
 
     await service.generateTailoredResume(seeker, TEMPLATE_JOB_ID);
     await service.approveResume(seeker, TEMPLATE_JOB_ID);
-    const personal = await service.selectResumeFormat(seeker, TEMPLATE_JOB_ID, 'personal');
-    assert.equal(personal.format, 'personal');
-    assert.equal(personal.approved, false);
+    const company = await service.selectResumeFormat(seeker, TEMPLATE_JOB_ID, 'company');
+    assert.equal(company.format, 'company');
+    assert.equal(company.approved, false);
   });
 });
 

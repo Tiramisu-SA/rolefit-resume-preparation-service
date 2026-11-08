@@ -76,8 +76,9 @@ export class ResumeService {
       id: existing?.id ?? this.newDraftId(),
       jobId,
       candidateId: caller.userId,
-      // UC4: the company template is offered first when the recruiter provided one.
-      format: job.applicationSettings.resumeTemplateId ? 'company' : 'personal',
+      // The AI resume always uses the seeker's own format. To use a company's template,
+      // the seeker downloads it, fills it in and applies with an uploaded file.
+      format: 'personal',
       sections,
       approved: false,
       generatedAt: at,
