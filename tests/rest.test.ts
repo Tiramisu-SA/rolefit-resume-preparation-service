@@ -51,7 +51,7 @@ describe('REST API (mock identity)', () => {
 
     const generated = await call(url, 'POST', `/api/drafts/${TEMPLATE_JOB_ID}/generate`, as);
     assert.equal(generated.status, 201);
-    assert.equal(generated.body.format, 'company');
+    assert.equal(generated.body.format, 'personal');
 
     const sections = generated.body.sections;
     sections[0].included = false;
